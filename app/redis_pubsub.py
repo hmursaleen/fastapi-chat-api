@@ -6,25 +6,31 @@ from app.config import REDIS_HOST, REDIS_PORT
 To understand what Redis pub/sub is: https://medium.com/redis-with-raphael-de-lio/understanding-pub-sub-in-redis-18278440c2a9
 
 The following class:
-    Implements publish-subscribe pattern using Redis.
-    Uses yield for efficient message streaming.
+    Each room gets its own Redis channel for isolation.
+    Uses async generator (yield) for efficient streaming.
 '''
 
 class RedisPubSub:
     
     def __init__(self):
         self.redis = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
-        self.pubsub = self.redis.pubsub()
 
-    def publish(self, channel: str, message: str):
-        self.redis.publish(channel, message) #Publish a message to a channel.
+    def publish(self, room: str, message: str):
+        self.redis.publish(room, message) #Publish a message to a room.
 
-    async def subscribe(self, channel: str):
-        self.pubsub.subscribe(channel) #Subscribe to a Redis channel and listens for messages.
+    async def subscribe(self, room: str):
+        pubsub = self.redis.pubsub()
+        pubsub.subscribe(room) #Subscribe to a Redis room and listens for messages.
+        
+        async for message in self._listen(pubsub):
+            yield message["data"]
+
+    async def _listen(self, pubsub): #Helper function to asynchronously listen for messages.
+        
         while True:
-            message = self.pubsub.get_message(ignore_subscribe_messages=True)
+            message = pubsub.get_message(ignore_subscribe_messages=True)
             if message:
-                yield message["data"]
+                yield message
             await asyncio.sleep(0.1)
 
 

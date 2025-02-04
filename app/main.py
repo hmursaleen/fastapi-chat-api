@@ -1,6 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from app.websocket import connection_manager as ws_conn #the instance of ConnectionManager class
-import asyncio
 
 app = FastAPI()
 
@@ -11,27 +10,20 @@ async def root():
 
 '''
 The following function:
-    Creates a background task to listen to Redis (asyncio.create_task).
-    Handles disconnections properly.
+    Each WebSocket connection must specify a room in the URL.
+    Users only receive messages from their room.
 '''
-@app.websocket("/ws") #Clients connect to ws://localhost:8000/ws
-async def websocket_endpoint(websocket: WebSocket):
-    await ws_conn.connect(websocket)
 
-    asyncio.create_task(ws_conn.listen_redis()) #start listening to Redis channel
-    
+#message showing twice to each user
+
+@app.websocket("/ws/{room}") #Clients connect to ws://localhost:8000/ws/room
+async def websocket_endpoint(room: str, websocket: WebSocket):
+    await ws_conn.connect(room, websocket)
+
     try:
         while True:
             data = await websocket.receive_text()
-            await ws_conn.broadcast(f"Client says: {data}")
+            await ws_conn.broadcast(room, f"[{room}] {data}")
     except WebSocketDisconnect:
-        ws_conn.disconnect(websocket)
-        await ws_conn.broadcast("A client has disconnected.") #When a client disconnects, it notifies others
-
-
-
-'''
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
-'''
+        ws_conn.disconnect(room, websocket)
+        await ws_conn.broadcast(room, f"[{room}] A user has left the chat.") #When a client disconnects, it notifies others
