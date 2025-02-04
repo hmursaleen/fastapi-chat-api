@@ -7,6 +7,8 @@ __pycache__/
 *.pyo
 *.pyd
 
+# __pycache__/ & *.pyc: Avoids storing compiled Python cache.
+
 # Dependency files
 *.log
 *.db
