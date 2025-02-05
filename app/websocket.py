@@ -1,4 +1,5 @@
-from fastapi import WebSocket, WebSocketDisconnect
+from fastapi import WebSocket, WebSocketDisconnect, Depends
+from app.auth import verify_token
 from typing import List, Dict
 from app.redis_pubsub import redis_pubsub
 import asyncio
@@ -14,16 +15,17 @@ class ConnectionManager:
     def __init__(self):
         self.active_rooms: Dict[str, List[WebSocket]] = {}
 
-    async def connect(self, room: str, websocket: WebSocket):
-        await websocket.accept() #Accepts a WebSocket connection and adds it to the active list.
+    async def connect(self, room: str, websocket: WebSocket, username: str):
+        await websocket.accept() #Accept WebSocket connection and authenticate user.
         if room not in self.active_rooms:
-            self.active_rooms[room] = []
-        self.active_rooms[room].append(websocket)
+            self.active_rooms[room] = {}
+        self.active_rooms[room][username] = websocket
         asyncio.create_task(self.listen_redis(room))  # Start listening for room messages
 
-    def disconnect(self, room: str, websocket: WebSocket):
-        self.active_rooms[room].remove(websocket)
-        if not self.active_rooms[room]:  # If room is empty, delete it
+    def disconnect(self, room: str, username: str):
+        if room in self.active_rooms and username in self.active_rooms[room]:
+            del self.active_rooms[room][username] #Remove user from chat room when disconnected.
+        if not self.active_rooms[room]:  # If no users left, delete room
             del self.active_rooms[room]
 
     async def broadcast(self, room: str, message: str):
@@ -31,7 +33,7 @@ class ConnectionManager:
 
     async def listen_redis(self, room: str):
         async for message in redis_pubsub.subscribe(room): #Listens to Redis and forwards messages to WebSocket clients.
-            for connection in self.active_rooms.get(room, []):
+            for user, connection in self.active_rooms.get(room, {}).items():
                 await connection.send_text(message)
 
 
