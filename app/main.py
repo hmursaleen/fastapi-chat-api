@@ -1,8 +1,9 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException
-from app.websocket import connection_manager as ws_conn #the instance of ConnectionManager class
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, Query
+from app.websocket import connection_manager as ws_conn, handle_message
 from app.auth import create_access_token, verify_token
-from app.models import User
-
+from app.models import User, Message
+from app.config import messages_collection
+from typing import List
 
 app = FastAPI()
 
@@ -18,23 +19,15 @@ async def root():
     return {"message": "Welcome to the FastAPI Chat API"}
 
 
-'''
-The following function:
-    Each WebSocket connection must specify a room in the URL.
-    Users only receive messages from their room.
-'''
-
-
 @app.post("/token")
+#Authenticates users and returns a JWT token.
 async def login(user: User):
-    """Authenticates users and returns a JWT token."""
     if user.username in fake_users_db and user.password == fake_users_db[user.username]["password"]:
         token = create_access_token({"sub": user.username})
         return {"access_token": token, "token_type": "bearer"}
     return {"error": "Invalid credentials"}
 
 
-#message showing twice to each user
 
 @app.websocket("/ws/{room}")
 #Handles WebSocket connections with JWT authentication.
@@ -55,7 +48,17 @@ async def websocket_endpoint(room: str, websocket: WebSocket):
     try:
         while True:
             data = await websocket.receive_text()
-            await ws_conn.broadcast(room, f"[{room}] {username}: {data}")
+            await handle_message(room, username, data)  # Save message & broadcast
+            #Calls handle_message() to store messages in MongoDB before broadcasting.
+
     except WebSocketDisconnect:
         ws_conn.disconnect(room, username)
         await ws_conn.broadcast(room, f"[{room}] {username} has left the chat.")
+
+
+
+#Retrieves past messages for a given chat room. Defaults to last 50 messages, but can increase if needed.
+@app.get("/messages/{room}", response_model=List[Message])
+async def get_chat_history(room: str, limit: int = Query(50, description="Number of messages to fetch")):
+    messages = await messages_collection.find({"room": room}).sort("timestamp", -1).limit(limit).to_list(length=limit)
+    return messages

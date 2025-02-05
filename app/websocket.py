@@ -3,6 +3,27 @@ from app.auth import verify_token
 from typing import List, Dict
 from app.redis_pubsub import redis_pubsub
 import asyncio
+from app.config import messages_collection
+from app.models import Message
+from datetime import datetime
+
+
+#Stores a chat message in MongoDB    
+async def save_message(room: str, sender: str, content: str):
+    message_data = Message(
+        room=room,
+        sender=sender,
+        content=content,
+        timestamp=datetime.utcnow(),
+    ).dict()
+    await messages_collection.insert_one(message_data)
+
+
+#Handles incoming messages: stores them and broadcasts to WebSocket clients.
+async def handle_message(room: str, sender: str, content: str):
+    await save_message(room, sender, content)  # Save to MongoDB
+    await connection_manager.broadcast(room, f"[{room}] {sender}: {content}")  # Send to WebSockets
+
 
 '''
 The following class:
