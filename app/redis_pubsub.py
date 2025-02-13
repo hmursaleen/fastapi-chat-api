@@ -4,7 +4,7 @@ from app.config import REDIS_HOST, REDIS_PORT
 
 '''
 To understand what Redis pub/sub is: https://medium.com/redis-with-raphael-de-lio/understanding-pub-sub-in-redis-18278440c2a9
-
+It might as well be you
 The following class:
     Each room gets its own Redis channel for isolation.
     Uses async generator (yield) for efficient streaming.
